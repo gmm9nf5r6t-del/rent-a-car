@@ -186,7 +186,47 @@ input[type=range]{width:100%;accent-color:var(--blue);margin:8px 0}
 </head>
 <body>
 <div id="app"></div>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script>
+/* ---------- Supabase configuration ---------- */
+/* Paste your Project URL and Publishable Key below. */
+const SUPABASE_URL = 'https://zwqfodakowculsyymekq.supabase.co';
+const SUPABASE_PUBLISHABLE_KEY = 'sb_publishable_b0nPVOr6xuDpWHhPBMi5Kw_mBaLp_f-';
+const supabaseClient = (window.supabase && SUPABASE_URL.startsWith('https://') &&
+  !SUPABASE_URL.includes('PASTE_') && !SUPABASE_PUBLISHABLE_KEY.includes('PASTE_'))
+  ? window.supabase.createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY) : null;
+let cloudSaveTimer = null;
+let cloudLoaded = false;
+function queueCloudSave(){
+  if(!supabaseClient || !cloudLoaded) return;
+  clearTimeout(cloudSaveTimer);
+  cloudSaveTimer=setTimeout(async()=>{
+    const {error}=await supabaseClient.from('rentacar_state').upsert({
+      id:1, cars, history:hist, updated_at:new Date().toISOString()
+    });
+    if(error) console.error('Supabase save failed:', error.message);
+  },500);
+}
+async function loadCloudState(){
+  if(!supabaseClient) return;
+  try{
+    const {data,error}=await supabaseClient.from('rentacar_state')
+      .select('cars,history').eq('id',1).maybeSingle();
+    if(error) throw error;
+    if(data){
+      if(Array.isArray(data.cars) && data.cars.length) cars=data.cars;
+      if(data.history && typeof data.history==='object') hist=data.history;
+      try{localStorage.setItem(KEY,JSON.stringify(cars));localStorage.setItem(HKEY,JSON.stringify(hist))}catch(e){}
+      render();
+    }else{
+      await supabaseClient.from('rentacar_state').upsert({id:1,cars,history:hist,updated_at:new Date().toISOString()});
+    }
+    cloudLoaded=true;
+  }catch(e){
+    console.error('Supabase load failed:',e.message);
+    cloudLoaded=true;
+  }
+}
 /* ---------- helpers ---------- */
 /* >>> Paste your Google Maps JavaScript API key between the quotes to use Google Maps. Leave empty for the built-in satellite map. <<< */
 const GOOGLE_KEY='';
@@ -237,7 +277,7 @@ function seedCars(){
 }
 let cars=(()=>{try{const s=JSON.parse(localStorage.getItem(KEY));if(Array.isArray(s)&&s.length)return s}catch(e){}return seedCars()})();
 let hist=(()=>{try{return JSON.parse(localStorage.getItem(HKEY))||{}}catch(e){return{}}})();
-const save=()=>{try{localStorage.setItem(KEY,JSON.stringify(cars));localStorage.setItem(HKEY,JSON.stringify(hist))}catch(e){}};
+const save=()=>{try{localStorage.setItem(KEY,JSON.stringify(cars));localStorage.setItem(HKEY,JSON.stringify(hist))}catch(e){};queueCloudSave()};
 const byId=id=>cars.find(c=>c.id===id);
 const ago=m=>m===0?'a few seconds ago':m===1?'1 minute ago':m<60?m+' minute ago':Math.floor(m/60)+' hour ago';
 const clock=m=>{const d=new Date(Date.now()-m*60000);return pad(d.getHours())+':'+pad(d.getMinutes())};
@@ -566,6 +606,7 @@ app.addEventListener('click',e=>{
  }
 });
 render();
+loadCloudState();
 </script>
 </body>
 </html>
